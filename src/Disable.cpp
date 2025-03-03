@@ -108,7 +108,7 @@ BOOL EnableDisableDevice(
     return TRUE;
 }
 
-int main(void)
+int main(int argc, char* argv[])
 {
     // Get devices from "Sound, video and game controllers".
     HDEVINFO hDevInfo = SetupDiGetClassDevsA(
