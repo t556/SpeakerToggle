@@ -95,7 +95,7 @@ BOOL EnableDisableDevice(
         return FALSE;
     }
 
-    // Apply
+    
     if (!SetupDiCallClassInstaller(
             DIF_PROPERTYCHANGE,
             hDevInfo,
@@ -108,8 +108,20 @@ BOOL EnableDisableDevice(
     return TRUE;
 }
 
+
+
 int main(int argc, char* argv[])
 {
+
+    
+    
+
+    //    HDEVINFO SetupDiGetClassDevsA(
+    //        const GUID *ClassGuid,
+    //        PCSTR      Enumerator,
+    //        HWND       hwndParent,
+    //        DWORD      Flags
+    //      );
     // Get devices from "Sound, video and game controllers".
     HDEVINFO hDevInfo = SetupDiGetClassDevsA(
         &GUID_DEVCLASS_MEDIA,
@@ -117,47 +129,51 @@ int main(int argc, char* argv[])
         NULL,
         DIGCF_PRESENT | DIGCF_PROFILE
     );
-
     if (hDevInfo == INVALID_HANDLE_VALUE)
     {
         printf("SetupDiGetClassDevs failed. GetLastError() = %ld\n", GetLastError());
         return 1;
     }
-
-    // Enumerate
+    
     SP_DEVINFO_DATA devInfoData;
     devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-
-    int index = 0; 
-    BOOL moreDevices = TRUE;
-
+    
+    // Lets store useful device info here
     typedef struct _DEVICE_ENTRY {
         SP_DEVINFO_DATA devInfo;
         BOOL enabled;
         char name[512];
     } DEVICE_ENTRY;
-
-    DEVICE_ENTRY deviceList[256];
-    int deviceCount = 0;
-
-    while (moreDevices)
+    
+    DWORD deviceCount = 1;
+    DEVICE_ENTRY *deviceList = (DEVICE_ENTRY*)malloc(deviceCount *  sizeof(DEVICE_ENTRY));
+    if(deviceList == NULL)
     {
-        if (!SetupDiEnumDeviceInfo(hDevInfo, index, &devInfoData))
+        printf("Failed to allocate memory for deviceList.");
+        return 1;
+    }
+
+    // 
+    DWORD capacity = 1;
+    for(DWORD i=0; SetupDiEnumDeviceInfo(hDevInfo, deviceCount, &devInfoData); i++)
+    {
+        // List will grow as new devices are found.
+        if(i >= capacity)
         {
-            DWORD err = GetLastError();
-            if (err == ERROR_NO_MORE_ITEMS)
+            capacity *= 2; 
+            DEVICE_ENTRY *temp = (DEVICE_ENTRY*)realloc(deviceList, capacity*sizeof(DEVICE_ENTRY));
+            printf("Resizing Device List...");
+            if( temp == NULL)
             {
-                moreDevices = FALSE;
-                break;
+                printf("Failed to reallocate memory.");
+                free(deviceList);
+                return 1;
             }
-            else
-            {
-                printf("SetupDiEnumDeviceInfo() failure. Error:  %ld\n", err);
-                break;
-            }
+
+            deviceList = temp;
         }
 
-        // show name/description
+        // Get the description of the device
         char nameBuf[512];
         GetDeviceDescription(hDevInfo, &devInfoData, nameBuf, sizeof(nameBuf));
 
@@ -165,25 +181,24 @@ int main(int argc, char* argv[])
         ULONG status = 0, problem = 0;
         BOOL isEnabled = IsDeviceEnabled(&devInfoData, &status, &problem);
 
-       
-        DEVICE_ENTRY *entry = &deviceList[deviceCount];
+        // Fill deviceList with entries.
+        DEVICE_ENTRY *entry = &deviceList[i];
         entry->devInfo = devInfoData;
         entry->enabled = isEnabled;
         strncpy(entry->name, nameBuf, sizeof(entry->name));
         entry->name[sizeof(entry->name) - 1] = '\0'; 
-
         deviceCount++;
-        index++;
-
-        if (deviceCount >= 256)
-        {
-            break;
-        }
     }
 
+    DWORD err = GetLastError();
+    if (err != ERROR_NO_MORE_ITEMS) {
+        printf("SetupDiEnumDeviceInfo() failure. Error: %ld\n", err);
+    }
+    
+
     // Show user the devices
-    printf("Found %d sound devices':\n", deviceCount);
-    for (int i = 0; i < deviceCount; i++)
+    printf("Found %d sound devices:\n", deviceCount);
+    for (DWORD i=0; i < deviceCount; i++)
     {
         printf("%d) %s [Status: %s]\n",
                i + 1,
@@ -194,16 +209,18 @@ int main(int argc, char* argv[])
     if (deviceCount == 0)
     {        
         SetupDiDestroyDeviceInfoList(hDevInfo);
+        free(deviceList);
         return 0;
     }
 
-    // Enter Desired choice
+    // Enter Desired choice    
     int choice = 0;
     printf("\nEnter Device# to toggle. 0 to exit.\n> ");
     if (scanf_s("%d", &choice) != 1)
     {
         printf("Invalid input.\n");
         SetupDiDestroyDeviceInfoList(hDevInfo);
+        free(deviceList);
         return 0;
     }
 
@@ -211,6 +228,7 @@ int main(int argc, char* argv[])
     {
         printf("Exiting.\n");
         SetupDiDestroyDeviceInfoList(hDevInfo);
+        free(deviceList);
         return 0;
     }
 
@@ -233,5 +251,6 @@ int main(int argc, char* argv[])
 
     // Cleanup
     SetupDiDestroyDeviceInfoList(hDevInfo);
+    free(deviceList);
     return 0;
 }
